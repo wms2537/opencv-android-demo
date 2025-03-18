@@ -23,29 +23,36 @@ import org.opencv.imgproc.Imgproc;
 
 public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2 {
 
+    private static final String TAG = "OpenCVDemo";
     private static final int CAMERA_PERMISSION_REQUEST = 100;
     private JavaCameraView cameraView;
-    private int currentProcessingMode = 0; // 0: grayscale, 1: canny
+    private Button btnRaw, btnGrayscale, btnCanny;
+    private int currentProcessingMode = 0; // 0: grayscale, 1: canny, 2: raw
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
         
-        // Initialize OpenCV
+        // Initialize OpenCV before setting content view
         if (!OpenCVLoader.initDebug()) {
             Log.e(TAG, "OpenCV initialization failed");
             Toast.makeText(this, "OpenCV initialization failed!", Toast.LENGTH_LONG).show();
             finish();
             return;
+        } else {
+            Log.d(TAG, "OpenCV initialization successful");
         }
+        
+        setContentView(R.layout.activity_main);
         
         // Check and request camera permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) 
                 != PackageManager.PERMISSION_GRANTED) {
+            Log.d(TAG, "Requesting camera permission");
             ActivityCompat.requestPermissions(this, 
                     new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_REQUEST);
         } else {
+            Log.d(TAG, "Camera permission already granted");
             initializeOpenCV();
         }
     }
@@ -53,17 +60,33 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     private void initializeOpenCV() {
         // Initialize OpenCV camera view
         cameraView = findViewById(R.id.camera_view);
+        
+        // Explicitly set camera ID and visibility
+        cameraView.setCameraPermissionGranted();
+        cameraView.setCameraIndex(CameraBridgeViewBase.CAMERA_ID_BACK); // or CAMERA_ID_FRONT
+        cameraView.setVisibility(View.VISIBLE);
+        
+        // Set listeners
         cameraView.setCvCameraViewListener(this);
-        cameraView.enableView();
         
         // Set up buttons
-        Button btnGrayscale = findViewById(R.id.btn_grayscale);
-        Button btnCanny = findViewById(R.id.btn_canny);
+        btnRaw = findViewById(R.id.btn_raw);
+        btnGrayscale = findViewById(R.id.btn_grayscale);
+        btnCanny = findViewById(R.id.btn_canny);
+        
+        btnRaw.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                currentProcessingMode = 2; // Raw video mode
+                Log.d(TAG, "Switched to raw video mode");
+            }
+        });
         
         btnGrayscale.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 currentProcessingMode = 0; // Grayscale mode
+                Log.d(TAG, "Switched to grayscale mode");
             }
         });
         
@@ -71,8 +94,13 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             @Override
             public void onClick(View v) {
                 currentProcessingMode = 1; // Canny edge detection mode
+                Log.d(TAG, "Switched to Canny edge mode");
             }
         });
+        
+        // Start the camera view after everything is set up
+        cameraView.enableView();
+        Log.d(TAG, "Camera view enabled");
     }
 
     @Override
@@ -81,8 +109,10 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == CAMERA_PERMISSION_REQUEST) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG, "Camera permission granted in onRequestPermissionsResult");
                 initializeOpenCV();
             } else {
+                Log.e(TAG, "Camera permission denied");
                 Toast.makeText(this, "Camera permission is required", Toast.LENGTH_LONG).show();
                 finish();
             }
@@ -93,6 +123,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     protected void onResume() {
         super.onResume();
         if (cameraView != null) {
+            Log.d(TAG, "Enabling camera view in onResume");
             cameraView.enableView();
         }
     }
@@ -101,6 +132,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     protected void onPause() {
         super.onPause();
         if (cameraView != null) {
+            Log.d(TAG, "Disabling camera view in onPause");
             cameraView.disableView();
         }
     }
@@ -109,35 +141,40 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     protected void onDestroy() {
         super.onDestroy();
         if (cameraView != null) {
+            Log.d(TAG, "Disabling camera view in onDestroy");
             cameraView.disableView();
         }
     }
 
     @Override
     public void onCameraViewStarted(int width, int height) {
+        Log.d(TAG, "Camera view started: " + width + "x" + height);
     }
 
     @Override
     public void onCameraViewStopped() {
+        Log.d(TAG, "Camera view stopped");
     }
 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
         Mat rgba = inputFrame.rgba();
-        Mat processedImage = new Mat();
         
         switch (currentProcessingMode) {
             case 0: // Grayscale
-                Imgproc.cvtColor(rgba, processedImage, Imgproc.COLOR_RGBA2GRAY);
-                break;
-            case 1: // Canny edge detection
                 Mat grayImage = new Mat();
                 Imgproc.cvtColor(rgba, grayImage, Imgproc.COLOR_RGBA2GRAY);
-                Imgproc.Canny(grayImage, processedImage, 50, 150);
-                grayImage.release();
-                break;
+                return grayImage;
+            case 1: // Canny edge detection
+                Mat edgeImage = new Mat();
+                Mat grayForEdge = new Mat();
+                Imgproc.cvtColor(rgba, grayForEdge, Imgproc.COLOR_RGBA2GRAY);
+                Imgproc.Canny(grayForEdge, edgeImage, 50, 150);
+                grayForEdge.release();
+                return edgeImage;
+            case 2: // Raw video
+            default:
+                return rgba; // Return the original frame without processing
         }
-        
-        return processedImage;
     }
 }
